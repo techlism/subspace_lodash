@@ -8,11 +8,14 @@ dotenv.config()
 let cache = {}
 
 const baseURL = 'https://intent-kit-16.hasura.app/api/rest/blogs'
+const cacheTimeout = 60 * 60 * 1000  // 1 hour in milliseconds
 
 app.get('/api/blog-stats', async (req, res) => {
   try {
-    if (cache['blogStats']) {
-      return res.json(cache['blogStats'])
+    const currentTime = new Date().getTime();
+    if (cache['blogStats'] && currentTime - cache['blogStats'].time < cacheTimeout) {
+      res.json(cache['blogStats'].data)
+      return
     }
 
     const response = await axios.get(baseURL, {
@@ -27,9 +30,8 @@ app.get('/api/blog-stats', async (req, res) => {
     const privacyBlogs = _.filter(blogs, blog =>
       blog.title.toLowerCase().includes('privacy')
     ).length;
-    // Since it was not clear whether to use ID or title for uniqueness. I chose title as all the ids were coming unique
     const uniqueTitles = _.uniq(_.map(blogs, 'title')); 
-    console.log(uniqueTitles.length);
+
     const stats = {
       totalBlogs,
       longestTitleBlog: longestTitleBlog.title,
@@ -38,7 +40,7 @@ app.get('/api/blog-stats', async (req, res) => {
       uniqueTitles
     }
 
-    cache['blogStats'] = stats
+    cache['blogStats'] = { time: currentTime, data: stats }
 
     res.status(200).json(stats)
   } catch (error) {
@@ -49,9 +51,11 @@ app.get('/api/blog-stats', async (req, res) => {
 app.get('/api/blog-search', async (req, res) => {
   try {
     const query = req.query.query
+    const currentTime = new Date().getTime();
 
-    if (cache[query]) {
-      return res.json(cache[query])
+    if (cache[query] && currentTime - cache[query].time < cacheTimeout) {
+      res.json(cache[query].data)
+      return
     }
 
     const response = await axios.get(baseURL, {
@@ -66,12 +70,13 @@ app.get('/api/blog-search', async (req, res) => {
       blog.title.toLowerCase().includes(query.toLowerCase())
     );
 
-    cache[query] = filteredBlogs
+    cache[query] = { time: currentTime, data: filteredBlogs }
 
     res.status(200).json(filteredBlogs);
   } catch (error) {
     res.status(500).json({ error: `Error in fetching blog data : ${error}` });
   }
 });
+
 const port = process.env.PORT || 3000
 app.listen(port, () => console.log(`Server is running on port ${port}`))
